@@ -3,4 +3,3 @@ streamlit-drawable-canvas
 openai
 pillow
 numpy
-sympy

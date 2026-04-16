@@ -3,11 +3,13 @@ import base64
 from openai import OpenAI
 from PIL import Image
 import numpy as np
+import sympy as sp
 from streamlit_drawable_canvas import st_canvas
+import io
 
 # ---------------- CONFIG ----------------
 st.set_page_config(
-    page_title='🧠 Tablero Inteligente',
+    page_title='🧠 Tablero Matemático Inteligente',
     page_icon='🎨',
     layout="wide"
 )
@@ -33,18 +35,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------- UI ----------------
-st.markdown('<div class="title">🧠 Tablero Inteligente con IA</div>', unsafe_allow_html=True)
-st.write("Dibuja algo y deja que la IA lo interprete ✨")
+st.markdown('<div class="title">🧠 Tablero Matemático Inteligente</div>', unsafe_allow_html=True)
+st.write("✍️ Dibuja una ecuación (ej: 2x + 3 = 7) y la resolveré automáticamente")
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.header("⚙️ Configuración")
     stroke_width = st.slider('Grosor', 1, 30, 5)
     api_key = st.text_input('API Key', type="password")
-
-# ---------------- FUNCIÓN ----------------
-def encode_image(image):
-    return base64.b64encode(image).decode()
 
 # ---------------- CANVAS ----------------
 col1, col2, col3 = st.columns([1,2,1])
@@ -66,32 +64,34 @@ with col2:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- BOTÓN ----------------
-if st.button("🔍 Analizar dibujo"):
+if st.button("🔍 Analizar y resolver"):
 
     if canvas_result.image_data is None:
-        st.warning("⚠️ Dibuja algo primero")
+        st.warning("⚠️ Dibuja una ecuación primero")
     elif not api_key:
         st.warning("⚠️ Ingresa tu API Key")
     else:
         try:
             client = OpenAI(api_key=api_key)
 
-            with st.spinner("🧠 Analizando imagen..."):
+            with st.spinner("🧠 Interpretando ecuación..."):
 
-                # Convertir imagen del canvas
+                # Convertir imagen
                 img_array = np.array(canvas_result.image_data)
                 image = Image.fromarray(img_array.astype('uint8'), 'RGBA')
 
-                # Guardar en memoria (sin archivo)
-                import io
                 buffer = io.BytesIO()
                 image.save(buffer, format="PNG")
-                base64_image = encode_image(buffer.getvalue())
+                base64_image = base64.b64encode(buffer.getvalue()).decode()
 
-                # Prompt
-                prompt = "Describe en español brevemente lo que ves en la imagen."
+                # Prompt optimizado
+                prompt = """
+                Extrae SOLO la ecuación matemática de la imagen.
+                Usa formato Python (ej: 2*x + 3 = 7).
+                No expliques nada.
+                """
 
-                # Llamada a la API (FORMA CORRECTA)
+                # Llamada a OpenAI
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
@@ -108,14 +108,43 @@ if st.button("🔍 Analizar dibujo"):
                             ],
                         }
                     ],
-                    max_tokens=300,
+                    max_tokens=200,
                 )
 
-                resultado = response.choices[0].message.content
+                ecuacion = response.choices[0].message.content.strip()
 
-                # Mostrar resultado
-                st.success("✅ Resultado:")
-                st.markdown(f"### 🧾 {resultado}")
+                # Limpieza básica
+                ecuacion = ecuacion.replace(" ", "")
+
+                st.success(f"📘 Ecuación detectada: {ecuacion}")
+
+                # Validación
+                if "=" not in ecuacion:
+                    st.error("❌ No se detectó una ecuación válida")
+                else:
+                    # ---------------- RESOLVER ----------------
+                    x = sp.symbols('x')
+
+                    lhs, rhs = ecuacion.split("=")
+
+                    expr = sp.sympify(lhs) - sp.sympify(rhs)
+
+                    solucion = sp.solve(expr, x)
+
+                    # ---------------- RESULTADO ----------------
+                    st.success(f"✅ Solución: x = {solucion}")
+
+                    # ---------------- PASOS ----------------
+                    st.subheader("📘 Paso a paso")
+
+                    st.write("1️⃣ Pasamos todo a un lado:")
+                    st.latex(sp.latex(expr))
+
+                    st.write("2️⃣ Resolvemos la ecuación:")
+                    if solucion:
+                        st.latex(f"x = {solucion[0]}")
+                    else:
+                        st.write("No se encontró solución")
 
         except Exception as e:
             st.error(f"❌ Error: {e}")

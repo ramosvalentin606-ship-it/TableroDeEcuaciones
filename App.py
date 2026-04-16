@@ -1,65 +1,98 @@
-import os
 import streamlit as st
 import base64
-import openai
 from openai import OpenAI
 from PIL import Image
 import numpy as np
-import sympy as sp
 from streamlit_drawable_canvas import st_canvas
 
 # ---------------- CONFIG ----------------
-st.set_page_config(page_title="🧠 Tablero Matemático", layout="wide")
+st.set_page_config(
+    page_title='🧠 Tablero Inteligente',
+    page_icon='🎨',
+    layout="wide"
+)
 
-st.title("🧠 Tablero Matemático Inteligente")
-st.write("Dibuja una ecuación simple (ej: 2x + 3 = 7)")
+# ---------------- ESTILO ----------------
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(135deg, #1f1c2c, #928dab);
+    color: white;
+}
+.title {
+    font-size: 42px;
+    font-weight: bold;
+    text-align: center;
+}
+.card {
+    background-color: #2b2b2b;
+    padding: 20px;
+    border-radius: 15px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- UI ----------------
+st.markdown('<div class="title">🧠 Tablero Inteligente con IA</div>', unsafe_allow_html=True)
+st.write("Dibuja algo y deja que la IA lo interprete ✨")
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.header("⚙️ Configuración")
-    stroke_width = st.slider("Grosor", 1, 20, 5)
-    api_key = st.text_input("API Key", type="password")
+    stroke_width = st.slider('Grosor', 1, 30, 5)
+    api_key = st.text_input('API Key', type="password")
+
+# ---------------- FUNCIÓN ----------------
+def encode_image(image):
+    return base64.b64encode(image).decode()
 
 # ---------------- CANVAS ----------------
-canvas_result = st_canvas(
-    stroke_width=stroke_width,
-    stroke_color="#000000",
-    background_color="#FFFFFF",
-    height=300,
-    width=500,
-    drawing_mode="freedraw",
-    key="math_canvas",
-)
+col1, col2, col3 = st.columns([1,2,1])
+
+with col2:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",
+        stroke_width=stroke_width,
+        stroke_color="#000000",
+        background_color="#FFFFFF",
+        height=300,
+        width=400,
+        drawing_mode="freedraw",
+        key="canvas",
+    )
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- BOTÓN ----------------
-if st.button("🔍 Resolver"):
+if st.button("🔍 Analizar dibujo"):
 
     if canvas_result.image_data is None:
-        st.warning("Dibuja una ecuación primero")
+        st.warning("⚠️ Dibuja algo primero")
     elif not api_key:
-        st.warning("Ingresa tu API key")
+        st.warning("⚠️ Ingresa tu API Key")
     else:
-        os.environ['OPENAI_API_KEY'] = api_key
+        try:
+            client = OpenAI(api_key=api_key)
 
-        with st.spinner("🧠 Interpretando ecuación..."):
-            try:
-                # Convertir imagen
+            with st.spinner("🧠 Analizando imagen..."):
+
+                # Convertir imagen del canvas
                 img_array = np.array(canvas_result.image_data)
                 image = Image.fromarray(img_array.astype('uint8'), 'RGBA')
-                image.save("eq.png")
 
-                # Base64
-                with open("eq.png", "rb") as f:
-                    base64_image = base64.b64encode(f.read()).decode()
+                # Guardar en memoria (sin archivo)
+                import io
+                buffer = io.BytesIO()
+                image.save(buffer, format="PNG")
+                base64_image = encode_image(buffer.getvalue())
 
-                # Prompt mejorado
-                prompt = """
-                Extrae SOLO la ecuación matemática de la imagen.
-                Ejemplo salida: 2*x + 3 = 7
-                No expliques nada.
-                """
+                # Prompt
+                prompt = "Describe en español brevemente lo que ves en la imagen."
 
-                response = openai.chat.completions.create(
+                # Llamada a la API (FORMA CORRECTA)
+                response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {
@@ -75,19 +108,14 @@ if st.button("🔍 Resolver"):
                             ],
                         }
                     ],
+                    max_tokens=300,
                 )
 
-                ecuacion = response.choices[0].message.content.strip()
+                resultado = response.choices[0].message.content
 
-                st.success(f"📘 Ecuación detectada: {ecuacion}")
+                # Mostrar resultado
+                st.success("✅ Resultado:")
+                st.markdown(f"### 🧾 {resultado}")
 
-                # ---------------- RESOLVER ----------------
-                x = sp.symbols('x')
-                lhs, rhs = ecuacion.split("=")
-
-                solucion = sp.solve(sp.sympify(lhs) - sp.sympify(rhs), x)
-
-                st.success(f"✅ Solución: x = {solucion}")
-
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
